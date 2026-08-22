@@ -22,8 +22,9 @@ Scripts are available for **macOS**, and **Windows**.
 On macOS and Windows it checks common Ollama database paths automatically.
 It also checks if `sqlite3` is installed and if the needed tables exist.
 
-When you run it, it asks if you want a backup.
-Default answer is **No**.
+Before anything is deleted, the script shows how many chats it is about to wipe
+and asks you to type `DELETE` to confirm. Any other answer cancels and nothing is
+touched. It then asks if you want a backup — default answer is **Yes**.
 
 ## Before and after
 
@@ -69,6 +70,15 @@ or:
 ```bash
 OLLAMA_BACKUP=yes ./ollama_chat_deleter.sh
 ```
+
+For automation, `OLLAMA_FORCE` skips the `DELETE` confirmation:
+
+```bash
+OLLAMA_FORCE=yes ./ollama_chat_deleter.sh
+```
+
+Without it the script refuses to run non-interactively, so a scripted or piped
+invocation can never wipe the database by accident.
 
 ### Delete Ollama logs
 
@@ -204,6 +214,13 @@ or:
 
 ```powershell
 $env:OLLAMA_BACKUP = "yes"
+.\ollama_chat_deleter.ps1
+```
+
+To skip the `DELETE` confirmation for automation:
+
+```powershell
+$env:OLLAMA_FORCE = "yes"
 .\ollama_chat_deleter.ps1
 ```
 

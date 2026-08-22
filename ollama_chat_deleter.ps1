@@ -1,12 +1,14 @@
 # Ollama GUI chat-history wipe script (Windows)
 # Deletes ONLY chat data (chats/messages/tool_calls/attachments)
 # Keeps settings, users, models intact
-# Optional backup (default: no backup)
+# Requires typing DELETE to confirm (OLLAMA_FORCE=yes skips the prompt)
+# Optional backup (default: backup created)
 #
 # Usage:
 #   .\ollama_chat_deleter.ps1
 #   $env:OLLAMA_DB = "C:\path\to\db.sqlite"; .\ollama_chat_deleter.ps1
-#   $env:OLLAMA_BACKUP = "yes";              .\ollama_chat_deleter.ps1
+#   $env:OLLAMA_BACKUP = "no";               .\ollama_chat_deleter.ps1
+#   $env:OLLAMA_FORCE = "yes";               .\ollama_chat_deleter.ps1
 
 $ErrorActionPreference = "Stop"
 
@@ -36,9 +38,32 @@ function Should-CreateBackup {
         }
     }
 
-    # Interactive prompt
-    $answer = Read-Host "Create DB backup before deleting chats? [y/N]"
-    return ($answer.ToLower() -in "y","yes")
+    # Non-interactive runs default to creating a backup.
+    if ([Console]::IsInputRedirected) { return $true }
+
+    # Interactive prompt. Empty answer keeps the safe default (yes).
+    $answer = Read-Host "Create DB backup before deleting chats? [Y/n]"
+    return (-not ($answer.ToLower() -in "n","no"))
+}
+
+function Confirm-Wipe {
+    # OLLAMA_FORCE=1 skips the prompt for automation.
+    if ($env:OLLAMA_FORCE -and ($env:OLLAMA_FORCE.ToLower() -in "1","y","yes","true")) {
+        return $true
+    }
+
+    if ([Console]::IsInputRedirected) {
+        Write-Log "ERROR: refusing to wipe non-interactively. Set OLLAMA_FORCE=yes to proceed."
+        exit 1
+    }
+
+    $chats = sqlite3 $DB "SELECT COUNT(*) FROM chats;"
+    if ($LASTEXITCODE -ne 0) { Write-Log "ERROR: could not count chats in $DB"; exit 1 }
+
+    Write-Log "About to permanently delete $chats chat(s) and all their messages from:"
+    Write-Log "  $DB"
+    $answer = Read-Host "Type DELETE to confirm"
+    return ($answer -ceq "DELETE")
 }
 
 # ---- Resolve DB path ----
@@ -83,18 +108,16 @@ if ($ollamaProcs) {
     }
 }
 
-# ---- Optional backup ----
-if (Should-CreateBackup) {
-    $ts  = (Get-Date -Format "yyyyMMdd-HHmmss")
-    $bak = "$DB.bak.$ts"
-    Copy-Item $DB $bak
-    Write-Log "Backup created: $bak"
-} else {
-    Write-Log "Skipping backup (default)."
-}
-
 # ---- Validate expected tables ----
-$tables = sqlite3 $DB "SELECT name FROM sqlite_master WHERE type='table';"
+# Runs before the confirmation prompt so a malformed DB fails without asking,
+# and so the chat count in the prompt is safe to read.
+# @(...) forces an array: a single-row result is a string, and -contains on a
+# string is always false.
+$tables = @(sqlite3 $DB "SELECT name FROM sqlite_master WHERE type='table';")
+if ($LASTEXITCODE -ne 0) {
+    Write-Log "ERROR: could not read schema from $DB"
+    exit 1
+}
 
 foreach ($t in @("chats","messages","tool_calls","attachments")) {
     if ($tables -notcontains $t) {
@@ -102,6 +125,23 @@ foreach ($t in @("chats","messages","tool_calls","attachments")) {
         Write-Log "Tables present: $($tables -join ', ')"
         exit 1
     }
+}
+
+# ---- Confirm the wipe ----
+# Asked before the backup prompt so cancelling costs nothing.
+if (-not (Confirm-Wipe)) {
+    Write-Log "Cancelled. Nothing deleted."
+    exit 0
+}
+
+# ---- Optional backup ----
+if (Should-CreateBackup) {
+    $ts  = (Get-Date -Format "yyyyMMdd-HHmmss")
+    $bak = "$DB.bak.$ts"
+    Copy-Item $DB $bak
+    Write-Log "Backup created: $bak"
+} else {
+    Write-Log "Skipping backup."
 }
 
 # ---- Delete chat history ----
@@ -115,9 +155,10 @@ DELETE FROM chats;
 COMMIT;
 "@
 
-try {
-    $sql | sqlite3 $DB
-} catch {
+# sqlite3 is a native exe: it sets $LASTEXITCODE instead of throwing, so a
+# try/catch here would never fire.
+$sql | sqlite3 $DB
+if ($LASTEXITCODE -ne 0) {
     Write-Log "WARN: strict delete failed; retrying compatibility delete."
     @"
 DELETE FROM attachments;
@@ -125,16 +166,24 @@ DELETE FROM tool_calls;
 DELETE FROM messages;
 DELETE FROM chats;
 "@ | sqlite3 $DB
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "ERROR: delete failed."
+        exit 1
+    }
 }
 
+# WAL/SHM cleanup only runs if VACUUM succeeded — removing an active WAL that
+# still holds committed data would lose it.
 sqlite3 $DB "VACUUM;"
-
-# ---- Clean WAL/SHM files if present ----
-foreach ($ext in "-wal","-shm") {
-    $f = "$DB$ext"
-    if (Test-Path $f) {
-        try { Remove-Item $f -Force -ErrorAction Stop }
-        catch { Write-Log "WARN: could not remove $f (still locked) - safe to ignore, SQLite will clean it on next open." }
+if ($LASTEXITCODE -ne 0) {
+    Write-Log "WARN: VACUUM failed; DB is still valid. Leaving WAL/SHM files in place."
+} else {
+    foreach ($ext in "-wal","-shm") {
+        $f = "$DB$ext"
+        if (Test-Path $f) {
+            try { Remove-Item $f -Force -ErrorAction Stop }
+            catch { Write-Log "WARN: could not remove $f (still locked) - safe to ignore, SQLite will clean it on next open." }
+        }
     }
 }
 

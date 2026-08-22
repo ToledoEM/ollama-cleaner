@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Ollama GUI chat-history wipe script (macOS + Linux)
+# Ollama GUI chat-history wipe script (macOS)
 # Deletes ONLY chat data (chats/messages/tool_calls/attachments)
 # Keeps settings, users, models intact
-# Optional backup (default: no backup)
+# Requires typing DELETE to confirm (OLLAMA_FORCE=yes skips the prompt)
+# Optional backup (default: backup created)
 # script commented by GPT5.3-Codex
 
 # Detect runtime OS once and reuse it.
 OS="$(uname -s)"
+
+# Log helper writes to stderr for visibility.
+log() { printf '%s\n' "$*" >&2; }
 
 default_db_path() {
   case "$OS" in
@@ -28,20 +32,16 @@ default_db_path() {
       # Fall back to the primary documented path.
       printf '%s\n' "${candidates[0]}"
       ;;
-    Linux)
-      printf '%s\n' "$HOME/.local/share/Ollama/db.sqlite"
-      ;;
     *)
-      printf '%s\n' "$HOME/Library/Application Support/Ollama/db.sqlite"
+      log "ERROR: unsupported OS: $OS. This script supports macOS only."
+      log "Set OLLAMA_DB=/full/path/to/db.sqlite to override."
+      exit 1
       ;;
   esac
 }
 
 # Resolve DB path from env override or OS default.
 DB="${OLLAMA_DB:-$(default_db_path)}"
-
-# Log helper writes to stderr for visibility.
-log() { printf '%s\n' "$*" >&2; }
 
 should_create_backup() {
   # OLLAMA_BACKUP lets automation skip interactive prompt.
@@ -65,22 +65,43 @@ should_create_backup() {
     esac
   fi
 
-  # Ask only when stdin is interactive.
+  # Ask only when stdin is interactive. Empty answer keeps the safe default (yes).
   if [[ -t 0 ]]; then
     local answer
-    printf 'Create DB backup before deleting chats? [y/N]: ' >&2
+    printf 'Create DB backup before deleting chats? [Y/n]: ' >&2
     if ! read -r answer; then
       answer=""
     fi
     normalized="$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')"
     case "$normalized" in
-      y|yes) return 0 ;;
-      *) return 1 ;;
+      n|no) return 1 ;;
+      *) return 0 ;;
     esac
   fi
 
-  # Non-interactive mode defaults to no backup.
-  return 1
+  # Non-interactive mode defaults to creating a backup.
+  return 0
+}
+
+confirm_wipe() {
+  # OLLAMA_FORCE=1 skips the prompt for automation.
+  case "$(printf '%s' "${OLLAMA_FORCE:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|y|yes|true) return 0 ;;
+  esac
+
+  if [[ ! -t 0 ]]; then
+    log "ERROR: refusing to wipe non-interactively. Set OLLAMA_FORCE=yes to proceed."
+    exit 1
+  fi
+
+  local chats
+  chats="$(sqlite3 "$DB" "SELECT COUNT(*) FROM chats;")"
+  log "About to permanently delete $chats chat(s) and all their messages from:"
+  log "  $DB"
+  printf 'Type DELETE to confirm: ' >&2
+  local answer
+  read -r answer || answer=""
+  [[ "$answer" == "DELETE" ]]
 }
 
 # ---- Validate DB path ----
@@ -106,10 +127,6 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
   echo
   echo "Install sqlite3 with:"
   echo "  macOS  : brew install sqlite"
-  echo "  Debian : sudo apt update && sudo apt install -y sqlite3"
-  echo "  Ubuntu : sudo apt update && sudo apt install -y sqlite3"
-  echo "  Fedora : sudo dnf install -y sqlite"
-  echo "  Arch   : sudo pacman -S sqlite"
   exit 1
 fi
 
@@ -121,23 +138,30 @@ if [[ "$OS" == "Darwin" ]] && command -v osascript >/dev/null 2>&1; then
 fi
 pkill -x ollama >/dev/null 2>&1 || true
 
-# ---- Optional backup DB ----
-if should_create_backup; then
-  ts="$(date +%Y%m%d-%H%M%S)"
-  bak="${DB}.bak.${ts}"
-  cp "$DB" "$bak"
-  log "Backup created: $bak"
-else
-  log "Skipping backup (default)."
+# Wait for every Ollama process to actually exit (up to 10s) before touching the DB.
+ollama_running() {
+  pgrep -x Ollama >/dev/null 2>&1 || pgrep -x ollama >/dev/null 2>&1
+}
+
+waited=0
+while ollama_running && (( waited < 10 )); do
+  sleep 1
+  waited=$(( waited + 1 ))
+done
+
+if ollama_running; then
+  log "ERROR: Ollama is still running. Quit it manually and re-run."
+  exit 1
 fi
 
 # ---- Validate expected tables ----
-# Read schema table names once before validation.
+# Runs before the confirmation prompt so a malformed DB fails without asking,
+# and so the chat count in the prompt is safe to read.
 tables="$(sqlite3 "$DB" "SELECT name FROM sqlite_master WHERE type='table';")"
 
 need_table() {
   local t="$1"
-  if ! grep -qx "$t" <<<"$tables"; then
+  if ! grep -Fqx "$t" <<<"$tables"; then
     log "ERROR: expected table '$t' not found."
     log "Tables present:"
     log "$tables"
@@ -148,6 +172,20 @@ need_table() {
 for t in chats messages tool_calls attachments; do
   need_table "$t"
 done
+
+# ---- Confirm the wipe ----
+# Asked before the backup prompt so cancelling costs nothing.
+confirm_wipe || { log "Cancelled. Nothing deleted."; exit 0; }
+
+# ---- Optional backup DB ----
+if should_create_backup; then
+  ts="$(date +%Y%m%d-%H%M%S)"
+  bak="${DB}.bak.${ts}"
+  cp "$DB" "$bak"
+  log "Backup created: $bak"
+else
+  log "Skipping backup."
+fi
 
 # ---- Delete chat history only ----
 # Try strict transactional mode first; fall back to compatibility mode if needed.
@@ -171,9 +209,16 @@ EOF
 fi
 
 # Keep VACUUM separate for compatibility with more sqlite build/runtime combinations.
-sqlite3 "$DB" "VACUUM;"
-
-# ---- Clean WAL/SHM files if present ----
-rm -f "${DB}-wal" "${DB}-shm" || true
+# WAL/SHM cleanup only runs if VACUUM succeeded — removing an active WAL that
+# still holds committed data would lose it.
+if sqlite3 "$DB" "VACUUM;"; then
+  for f in "${DB}-wal" "${DB}-shm"; do
+    if [[ -e "$f" ]] && ! rm -f "$f"; then
+      log "WARN: could not remove $f (still locked) - safe to ignore, SQLite will clean it on next open."
+    fi
+  done
+else
+  log "WARN: VACUUM failed; DB is still valid. Leaving WAL/SHM files in place."
+fi
 
 log "Done. Chat history wiped from: $DB"
