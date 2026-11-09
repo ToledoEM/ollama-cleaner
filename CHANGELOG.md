@@ -10,6 +10,31 @@ Dated subsections under each release mark when the work landed.
 Safety release. The chat deleter now refuses to wipe anything without an
 explicit confirmation, and creates a backup by default.
 
+### 2026-11-09
+
+#### Added
+
+- GitHub Actions workflow `.github/workflows/docs.yml`: lints the Markdown,
+  builds the site with Zensical and deploys it to the `gh-pages` branch. Runs
+  on a published release or manually. Lint findings are reported but do not
+  block the deploy.
+- `.github/.markdownlint-cli2.yaml` with the markdownlint rules used by the workflow.
+
+#### Changed
+
+- Documentation site is now built with Zensical instead of Quarto. Config is
+  `zensical.toml`, the page is `docs/index.md`, styles are in
+  `docs/stylesheets/extra.css`, and the GoatCounter tag is kept through
+  `overrides/main.html`. Output goes to `site/`.
+- `img/` moved to `docs/img/`; `README.md` image paths updated.
+- Remote repository renamed from `Delete_ollamahistory_chat` to
+  `ollama-cleaner`. Site, repo and badge URLs in `zensical.toml`,
+  `README.md`, `docs/index.md` and the changelog links now use the new name.
+
+#### Removed
+
+- Quarto files: `index.qmd`, `_quarto.yml`, `styles.css`.
+
 ### 2026-08-22
 
 #### Added
@@ -132,5 +157,5 @@ history and clearing the logs.
   `OLLAMA_LOG_DIR` overrides the default `$HOME/.ollama/logs`. (`59a39b3`)
 - Before/after screenshots and initial README. (`37d1e23`)
 
-[1.1]: https://github.com/ToledoEM/Delete_ollamahistory_chat/compare/v1...v1.1
-[1]: https://github.com/ToledoEM/Delete_ollamahistory_chat/releases/tag/v1
+[1.1]: https://github.com/ToledoEM/ollama-cleaner/compare/v1...v1.1
+[1]: https://github.com/ToledoEM/ollama-cleaner/releases/tag/v1

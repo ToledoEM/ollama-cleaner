@@ -1,11 +1,11 @@
 # Ollama chat history cleaner
 
-<img src="img/DOC_logo.svg" align="right" width=150/>
+<img src="docs/img/DOC_logo.svg" align="right" width=150/>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![macOS](https://img.shields.io/badge/macOS-supported-brightgreen)
 ![Windows](https://img.shields.io/badge/Windows-supported-brightgreen)
-![Last Commit](https://img.shields.io/github/last-commit/toledoem/Delete_ollamahistory_chat)
+![Last Commit](https://img.shields.io/github/last-commit/toledoem/ollama-cleaner)
 ![Shell Script](https://img.shields.io/badge/Shell_Script-121011?style=flat&logo=gnu-bash&logoColor=white)
 
 I made these scripts to clean only the chat history and the logs from Ollama GUI and server.
@@ -26,11 +26,11 @@ touched. It then asks if you want a backup — default answer is **Yes**.
 
 Before running the script:
 
-![Before](img/before.png)
+![Before](docs/img/before.png)
 
 After running the script:
 
-![After](img/after.png)
+![After](docs/img/after.png)
 
 ---
 
@@ -126,7 +126,7 @@ winget install SQLite.SQLite
 >
 > Then retry `winget install SQLite.SQLite`.
 
-![winget install SQLite](img/windows_winget_sqllite.png)
+![winget install SQLite](docs/img/windows_winget_sqllite.png)
 
 After install, winget places `sqlite3.exe` inside `%LOCALAPPDATA%\Microsoft\WinGet\Packages\` but does **not** add it to your PATH automatically. Fix it:
 
@@ -179,7 +179,7 @@ powershell -ExecutionPolicy Bypass -File .\ollama_chat_deleter.ps1
 .\ollama_chat_deleter.ps1
 ```
 
-![Running the script on Windows](img/runscript_windows.png)
+![Running the script on Windows](docs/img/runscript_windows.png)
 
 > **Note:** The script stops Ollama before wiping the database and waits for all
 > Ollama processes (including the tray app) to exit before proceeding. If the
@@ -222,11 +222,11 @@ $env:OLLAMA_FORCE = "yes"
 
 Before running the script:
 
-![Before (Windows)](img/win_before.png)
+![Before (Windows)](docs/img/win_before.png)
 
 After running the script:
 
-![After (Windows)](img/win_after.png)
+![After (Windows)](docs/img/win_after.png)
 
 ### Delete Ollama logs (Windows)
 
