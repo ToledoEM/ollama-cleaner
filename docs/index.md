@@ -1,7 +1,3 @@
----
-title: "Ollama Chat History Cleaner"
----
-
 # Ollama chat history cleaner
 
 <img src="img/DOC_logo.svg" align="right" width=150/>
@@ -9,7 +5,7 @@ title: "Ollama Chat History Cleaner"
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![macOS](https://img.shields.io/badge/macOS-supported-brightgreen)
 ![Windows](https://img.shields.io/badge/Windows-supported-brightgreen)
-![Last Commit](https://img.shields.io/github/last-commit/toledoem/Delete_ollamahistory_chat)
+![Last Commit](https://img.shields.io/github/last-commit/toledoem/ollama-cleaner)
 ![Shell Script](https://img.shields.io/badge/Shell_Script-121011?style=flat&logo=gnu-bash&logoColor=white)
 
 I made these scripts to clean only the chat history and the logs from Ollama GUI and server.
@@ -130,7 +126,7 @@ winget install SQLite.SQLite
 >
 > Then retry `winget install SQLite.SQLite`.
 
-![winget install SQLite](img/windows_winget_sqllite.png){.screenshot}
+![winget install SQLite](img/windows_winget_sqllite.png)
 
 After install, winget places `sqlite3.exe` inside `%LOCALAPPDATA%\Microsoft\WinGet\Packages\` but does **not** add it to your PATH automatically. Fix it:
 
@@ -251,8 +247,9 @@ $env:OLLAMA_LOG_DIR = "C:\custom\log\path"
 .\ollama_logs_deleter.ps1
 ```
 
-> [!NOTE]
->  Right now these are more involved that I would like to, but I do not have the knowledge to make this into multiplatform app
+!!! note
+
+    Right now these are more involved that I would like to, but I do not have the knowledge to make this into multiplatform app
 
 //
 Enjoy
