@@ -1,0 +1,20 @@
+config:
+  default: true
+  # Long lines: prose is one paragraph per line.
+  MD013: false
+  # Keep a Changelog repeats Added/Changed/Fixed under each date.
+  MD024:
+    siblings_only: true
+  # Logo is a raw <img> with align="right".
+  MD033: false
+  # Numbered steps in the docs are not strictly 1/1/1 or 1/2/3.
+  MD029: false
+  MD034: false
+  MD045: false
+  # `!!! note` admonition body is an indented block.
+  MD046: false
+  # README uses the GitHub `> [!NOTE]` alert.
+  MD027: false
+
+ignores:
+  - site/**

@@ -1,0 +1,47 @@
+name: Docs
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Report only: findings show in the log, they do not block the deploy.
+      - name: markdownlint
+        continue-on-error: true
+        uses: DavidAnson/markdownlint-cli2-action@v25
+        with:
+          config: .github/.markdownlint-cli2.yaml
+          globs: |
+            README.md
+            CHANGELOG.md
+            docs/**/*.md
+
+  deploy:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+
+      - name: Build site
+        run: uvx zensical@0.1.0 build --clean
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
